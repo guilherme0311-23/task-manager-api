@@ -10,7 +10,12 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     done: bool | None = None
 
-class Task(TaskCreate):
+class Task(BaseModel):
     id: int
-    done: bool = False
+    title: str
+    description: str | None = None
+    done: bool
     created_at: datetime
+
+    class Config:
+        from_attributes = True

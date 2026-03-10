@@ -1,67 +1,49 @@
-from datetime import datetime
 from typing import List, Optional
-from .schemas import Task, TaskCreate, TaskUpdate
+from sqlalchemy.orm import Session
+from .models import TaskModel
+from .schemas import TaskCreate, TaskUpdate
 
-_tasks: List[Task] = []
-_next_id = 1
+def list_tasks(db: Session) -> List[TaskModel]:
+    return db.query(TaskModel).order_by(TaskModel.id).all()
 
-def list_tasks() -> List[Task]:
-    return _tasks
+def get_task(db: Session, task_id: int) -> Optional[TaskModel]:
+    return db.query(TaskModel).filter(TaskModel.id == task_id).first()
 
-def get_task(task_id: int) -> Optional[Task]:
-    for t in _tasks:
-        if t.id == task_id:
-            return t
-    return None
-
-def create_task(data: TaskCreate) -> Task:
-    global _next_id
-    task = Task(
-        id=_next_id,
-        title=data.title,
-        description=data.description,
-        done=False,
-        created_at=datetime.utcnow(),
-    )
-    _tasks.append(task)
-    _next_id += 1
+def create_task(db: Session, data: TaskCreate) -> TaskModel:
+    task = TaskModel(title=data.title, description=data.description, done=False)
+    db.add(task)
+    db.commit()
+    db.refresh(task)
     return task
 
-def update_task(task_id: int, data: TaskUpdate) -> Optional[Task]:
-    task = get_task(task_id)
+def update_task(db: Session, task_id: int, data: TaskUpdate) -> Optional[TaskModel]:
+    task = get_task(db, task_id)
     if not task:
         return None
 
-    updated = task.model_copy(
-        update={
-            k: v for k, v in data.model_dump().items() if v is not None
-        }
-    )
+    payload = data.model_dump(exclude_none=True)
+    for k, v in payload.items():
+        setattr(task, k, v)
 
-    # troca na lista
-    for i, t in enumerate(_tasks):
-        if t.id == task_id:
-            _tasks[i] = updated
-            break
+    db.commit()
+    db.refresh(task)
+    return task
 
-    return updated
+def delete_task(db: Session, task_id: int) -> bool:
+    task = get_task(db, task_id)
+    if not task:
+        return False
 
-def delete_task(task_id: int) -> bool:
-    global _tasks
-    before = len(_tasks)
-    _tasks = [t for t in _tasks if t.id != task_id]
-    return len(_tasks) < before
+    db.delete(task)
+    db.commit()
+    return True
 
-def toggle_done(task_id: int) -> Optional[Task]:
-    task = get_task(task_id)
+def toggle_done(db: Session, task_id: int) -> Optional[TaskModel]:
+    task = get_task(db, task_id)
     if not task:
         return None
 
-    updated = task.model_copy(update={"done": not task.done})
-
-    for i, t in enumerate(_tasks):
-        if t.id == task_id:
-            _tasks[i] = updated
-            break
-
-    return updated
+    task.done = not task.done
+    db.commit()
+    db.refresh(task)
+    return task
